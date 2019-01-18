@@ -50,6 +50,8 @@ class DataLoader:
 				annIds = self.coco.getAnnIds(imgIds = img_info["id"])
 			
 			img = misc.imread(self.img_dir+img_info["file_name"])
+			if len(img.shape)<3:
+				img = np.stack([img, img, img], axis = -1)
 			img = misc.imresize(img, self.img_size, mode = "RGB")
 			imgs.append(img)
 

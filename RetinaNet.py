@@ -132,7 +132,7 @@ class RetinaNet:
 		reg_loss = huber_loss(box_pred, box_label, pos_indices)
 		cls_loss = focal_loss(class_pred, class_label, pos_indices | bg_indices)
 
-		normalizer = tf.maximum(tf.reduce_sum(tf.to_float(pos_indices)), 1.0)
+		normalizer = tf.maximum(tf.reduce_sum(tf.to_float(pos_indices), axis = -2), 1.0)
 		normalized_reg_loss = tf.multiply(reg_loss, 1.0/4.0/normalizer)
 		normalized_cls_loss = tf.multiply(cls_loss, 1.0/normalizer)
 		return normalized_cls_loss, normalized_reg_loss
@@ -166,7 +166,7 @@ class RetinaNet:
 			while dataloader.epoch<10:
 				imgs, bl, cl, pi, bi = dataloader.next_batch(20)
 				feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
-				
+
 				_, l, step = sess.run([optim, loss, self.global_step], feed_dict = feed_dict)
 				print(l, step)
 

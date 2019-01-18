@@ -54,7 +54,6 @@ class BBoxUtility:
 			ious: [gt_num, anchors_num]
 		'''
 		def anchors_to_boxes(anchors):
-			print(anchors.shape)
 			ltx = anchors[:, 0] - anchors[:, 2]/2
 			lty = anchors[:, 1] - anchors[:, 3]/2
 			rbx = anchors[:, 0] + anchors[:, 2]/2
