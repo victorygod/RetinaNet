@@ -7,8 +7,6 @@ from bbox_util import BBoxUtility
 filePath = "../COCO/annotations/instances_train2014.json"
 coco = COCO(filePath)
 
-imgIds = coco.getImgIds()
-imgs = coco.loadImgs(imgIds)
 
 catIds = coco.getCatIds()
 catDict = {}
@@ -16,13 +14,13 @@ for i in range(len(catIds)):
 	catDict[catIds[i]] = i
 
 class DataLoader:
-	def __init__(self, bboxUtil):
-		filePath = "../COCO/annotations/instances_train2014.json"
+	def __init__(self, bboxUtil, mode = "train"):
+		filePath = "../COCO/annotations/instances_" + mode + "2014.json"
 		self.coco = COCO(filePath)
 		imgIds = self.coco.getImgIds()
-		self.imgs_info = coco.loadImgs(imgIds)
+		self.imgs_info = self.coco.loadImgs(imgIds)
 		np.random.shuffle(self.imgs_info)
-		self.img_dir = "../COCO/train2014/"
+		self.img_dir = "../COCO/" + mode + "2014/"
 		self.cursor = 0
 		self.epoch = 0
 		self.bboxUtil = bboxUtil
@@ -83,7 +81,7 @@ class DataLoader:
 
 if __name__ == "__main__":
 	boxUtil = BBoxUtility((256, 256), 80)
-	dataloader = DataLoader(boxUtil)
+	dataloader = DataLoader(boxUtil, mode = "val")
 	imgs, bl, cl, pi, bi = dataloader.next_batch()
 	print(np.shape(imgs))
 	print(bl.shape)

@@ -13,65 +13,65 @@ class RetinaNet:
 		self.global_step = tf.train.create_global_step()
 
 	def build(self, istraining = True, num_anchors_per_loc = 6):
-		batch_size = tf.shape(self.input_tensor)[0]
-		features = self.build_FPN(self.input_tensor, istraining = istraining)
-		class_pred = []
-		box_pred = []
-		for level, C in enumerate(features):
-			class_outputs = self._class_subnet(C, num_anchors_per_loc, level, istraining = istraining)
-			box_outputs = self._box_subnet(C, num_anchors_per_loc, level, istraining = istraining)
-			class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num + 1])
-			box_outputs = tf.reshape(box_outputs, shape = [batch_size, -1, 4])
-			class_pred.append(class_outputs)
-			box_pred.append(box_outputs)
-		return tf.concat(box_pred, axis = 1), tf.concat(class_pred, axis = 1)
+		with tf.variable_scope("RetinaNet", reuse=tf.AUTO_REUSE) as scope:
+			batch_size = tf.shape(self.input_tensor)[0]
+			features = self.build_FPN(self.input_tensor, istraining = istraining)
+			class_pred = []
+			box_pred = []
+			for level, C in enumerate(features):
+				class_outputs = self._class_subnet(C, num_anchors_per_loc, level, istraining = istraining)
+				box_outputs = self._box_subnet(C, num_anchors_per_loc, level, istraining = istraining)
+				class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num + 1])
+				box_outputs = tf.reshape(box_outputs, shape = [batch_size, -1, 4])
+				class_pred.append(class_outputs)
+				box_pred.append(box_outputs)
+			return tf.concat(box_pred, axis = 1), tf.concat(class_pred, axis = 1)
 
 	def build_FPN(self, input_tensor, istraining = True):
-		with tf.variable_scope("FPN", reuse=tf.AUTO_REUSE) as scope:
-			x = tf.layers.conv2d(input_tensor, 64, 7, padding = "same", strides = (2, 2))
-			x = tf.layers.batch_normalization(x, training = istraining)
-			x = activation(x)
-			C1 = x = tf.layers.max_pooling2d(x, pool_size = 3, strides = 2, padding = "same")
+		x = tf.layers.conv2d(input_tensor, 64, 7, padding = "same", strides = (2, 2))
+		x = tf.layers.batch_normalization(x, training = istraining)
+		x = activation(x)
+		C1 = x = tf.layers.max_pooling2d(x, pool_size = 3, strides = 2, padding = "same")
 
-			x = self._conv_block(x, [64, 64, 256], strides = (1,1), istraining = istraining)
-			x = self._identity_block(x, [64, 64, 256], istraining = istraining)
-			C2 = x = self._identity_block(x, [64, 64, 256], istraining = istraining)
+		x = self._conv_block(x, [64, 64, 256], strides = (1,1), istraining = istraining)
+		x = self._identity_block(x, [64, 64, 256], istraining = istraining)
+		C2 = x = self._identity_block(x, [64, 64, 256], istraining = istraining)
 
-			x = self._conv_block(x, [128, 128, 512], istraining = istraining)
-			x = self._identity_block(x, [128, 128, 512], istraining = istraining)
-			x = self._identity_block(x, [128, 128, 512], istraining = istraining)
-			C3 = x = self._identity_block(x, [128, 128, 512], istraining = istraining)
+		x = self._conv_block(x, [128, 128, 512], istraining = istraining)
+		x = self._identity_block(x, [128, 128, 512], istraining = istraining)
+		x = self._identity_block(x, [128, 128, 512], istraining = istraining)
+		C3 = x = self._identity_block(x, [128, 128, 512], istraining = istraining)
 
-			x = self._conv_block(x, [256, 256, 1024], istraining = istraining)
-			for i in range(5):#resnet50
-				x = self._identity_block(x, [256, 256, 1024], istraining = istraining)
-			C4 = x
+		x = self._conv_block(x, [256, 256, 1024], istraining = istraining)
+		for i in range(5):#resnet50
+			x = self._identity_block(x, [256, 256, 1024], istraining = istraining)
+		C4 = x
 
-			x = self._conv_block(x, [512, 512, 2048], istraining = istraining)
-			x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
-			C5 = x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
+		x = self._conv_block(x, [512, 512, 2048], istraining = istraining)
+		x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
+		C5 = x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
 
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
-			C6 = x = tf.layers.batch_normalization(x, training = istraining)
+		x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
+		C6 = x = tf.layers.batch_normalization(x, training = istraining)
 
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
-			C7 = x = tf.layers.batch_normalization(x, training = istraining)
+		x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
+		C7 = x = tf.layers.batch_normalization(x, training = istraining)
 
-			l3 = tf.layers.conv2d(C3, filters = 256, kernel_size = 1, strides = 1, padding = "same")
-			l4 = tf.layers.conv2d(C4, filters = 256, kernel_size = 1, strides = 1, padding = "same")
-			C5 = tf.layers.conv2d(C5, filters = 256, kernel_size = 1, strides = 1, padding = "same")
+		l3 = tf.layers.conv2d(C3, filters = 256, kernel_size = 1, strides = 1, padding = "same")
+		l4 = tf.layers.conv2d(C4, filters = 256, kernel_size = 1, strides = 1, padding = "same")
+		C5 = tf.layers.conv2d(C5, filters = 256, kernel_size = 1, strides = 1, padding = "same")
 
-			shape = tf.shape(l4)
-			x = l4 + tf.image.resize_nearest_neighbor(C5, (shape[1], shape[2]))
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 1, padding = "same")
-			C4 = tf.layers.batch_normalization(x, training = istraining)
+		shape = tf.shape(l4)
+		x = l4 + tf.image.resize_nearest_neighbor(C5, (shape[1], shape[2]))
+		x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 1, padding = "same")
+		C4 = tf.layers.batch_normalization(x, training = istraining)
 
-			shape = tf.shape(l3)
-			x = l3 + tf.image.resize_nearest_neighbor(l4, (shape[1], shape[2]))
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 1, padding = "same")
-			C3 = tf.layers.batch_normalization(x, training = istraining)
+		shape = tf.shape(l3)
+		x = l3 + tf.image.resize_nearest_neighbor(l4, (shape[1], shape[2]))
+		x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 1, padding = "same")
+		C3 = tf.layers.batch_normalization(x, training = istraining)
 
-			return C3, C4, C5, C6, C7
+		return C3, C4, C5, C6, C7
 
 	def _conv_block(self, input_tensor, filters, strides = (2,2), istraining = True):
 		x = tf.layers.conv2d(input_tensor, filters[0], 1, padding = "same", strides = strides)
@@ -146,16 +146,24 @@ class RetinaNet:
 		boxUtil = BBoxUtility((256, 256), self.class_num)
 
 		box_pred, class_pred = self.build(num_anchors_per_loc = boxUtil.num_anchors_per_loc)
+		box_pred_val, class_pred_val = self.build(istraining = False, num_anchors_per_loc = boxUtil.num_anchors_per_loc)
 
 		loss = self.loss(class_pred, box_pred, class_label, box_label, pos_indices, bg_indices)
 		loss = tf.reduce_sum(loss)
+
+		loss_val = self.loss(class_pred_val, box_pred_val, class_label, box_label, pos_indices, bg_indices)
+		loss_val = tf.reduce_sum(loss_val)		
 
 		lr = tf.train.exponential_decay(1e-4, self.global_step, 10000 ,0.9, True, name='learning_rate')
 		optimizer = tf.train.AdamOptimizer(lr)
 		with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
 			optim = optimizer.minimize(loss, global_step = self.global_step)
 
-		dataloader = DataLoader(boxUtil)
+		dataloader = DataLoader(boxUtil, mode = "train")
+		dataloader_val = DataLoader(boxUtil, mode = "val")
+
+		saver = tf.train.Saver(tf.global_variables(), max_to_keep = 1)
+		restore_path = "ckpt/"
 
 		c = tf.ConfigProto()
 		c.gpu_options.allow_growth = True
@@ -163,12 +171,27 @@ class RetinaNet:
 			print("start session")
 			sess.run(tf.global_variables_initializer())
 
+			checkpoint = tf.train.latest_checkpoint(restore_path)
+			if checkpoint:
+				print("restore from: " + checkpoint)
+				saver.restore(sess, checkpoint)
+
 			while dataloader.epoch<10:
 				imgs, bl, cl, pi, bi = dataloader.next_batch(20)
 				feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
 
 				_, l, step = sess.run([optim, loss, self.global_step], feed_dict = feed_dict)
 				print(l, step)
+
+				if step % 100 == 0:
+					ll = 0
+					for i in range(10):
+						imgs, bl, cl, pi, bi = dataloader_val.next_batch(20)
+						feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
+						l = sess.run(loss, feed_dict = feed_dict)
+						ll+=l
+					print("validataion loss:", ll/10, step)
+					saver.save(sess, restore_path+"ckpt")
 
 if __name__ == "__main__":
 	net = RetinaNet()
