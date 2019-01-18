@@ -26,7 +26,7 @@ class DataLoader:
 		self.cursor = 0
 		self.epoch = 0
 		self.bboxUtil = bboxUtil
-		self.img_size = bboxUtil.img_shape
+		self.img_size = bboxUtil.image_shape
 
 
 	def next_batch(self, batch_size = 20):
@@ -36,15 +36,24 @@ class DataLoader:
 		pos_indices = []
 		bg_indices = []
 		for i in range(batch_size):
-			img_info = self.imgs_info[self.cursor]
-			self.cursor+=1
-			img = misc.imread(self.img_dir+img_info["file_name"])
-			img = misc.imresize(img, self.img_size)
-			imgs.append(img)
-
 			bbox = []
 			bbid = []
+			img_info = self.imgs_info[self.cursor]
 			annIds = self.coco.getAnnIds(imgIds = img_info["id"])
+			while len(annIds) == 0:
+				self.cursor+=1
+				if self.cursor>=len(self.imgs_info):
+					self.cursor = 0
+					np.random.shuffle(self.imgs_info)
+					self.epoch+=1
+				img_info = self.imgs_info[self.cursor]
+				annIds = self.coco.getAnnIds(imgIds = img_info["id"])
+			
+			img = misc.imread(self.img_dir+img_info["file_name"])
+			img = misc.imresize(img, self.img_size, mode = "RGB")
+			imgs.append(img)
+
+			self.cursor+=1
 			anns = self.coco.loadAnns(annIds)
 			for ann in anns:
 				bbid.append(catDict[ann["category_id"]])
@@ -71,7 +80,8 @@ class DataLoader:
 		return imgs, np.array(box_labels), np.array(class_labels), pos_indices, bg_indices
 
 if __name__ == "__main__":
-	dataloader = DataLoader()
+	boxUtil = BBoxUtility((256, 256), 80)
+	dataloader = DataLoader(boxUtil)
 	imgs, bl, cl, pi, bi = dataloader.next_batch()
 	print(np.shape(imgs))
 	print(bl.shape)

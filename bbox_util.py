@@ -6,11 +6,13 @@ import time
 class BBoxUtility:
 	def __init__(self, image_shape, class_num = 80, anchor_cfg = {"scales": [0.5, 1], "ratios": [0.5, 1, 2]}):
 		self.image_shape = image_shape
+		print("start to generate anchors")
 		self.anchors = []
-		for level in range(4, 9):
+		for level in range(3, 8):
 			anchors = self.generate_anchors(image_shape[0], image_shape[1], level, scales = anchor_cfg["scales"], ratios = anchor_cfg["ratios"])
 			self.anchors.append(anchors)
 		self.anchors = np.concatenate(self.anchors)
+		print("anchors generated.")
 		self.class_num = class_num
 		self.num_anchors_per_loc = len(anchor_cfg["scales"])*len(anchor_cfg["ratios"])
 
@@ -52,6 +54,7 @@ class BBoxUtility:
 			ious: [gt_num, anchors_num]
 		'''
 		def anchors_to_boxes(anchors):
+			print(anchors.shape)
 			ltx = anchors[:, 0] - anchors[:, 2]/2
 			lty = anchors[:, 1] - anchors[:, 3]/2
 			rbx = anchors[:, 0] + anchors[:, 2]/2

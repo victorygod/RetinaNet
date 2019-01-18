@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from coco_data import DataLoader
 from bbox_util import BBoxUtility
-from loss import focal_loss, reg_loss
+from loss import focal_loss, huber_loss
 
 activation = tf.nn.relu
 
@@ -20,7 +20,7 @@ class RetinaNet:
 		for level, C in enumerate(features):
 			class_outputs = self._class_subnet(C, num_anchors_per_loc, level, istraining = istraining)
 			box_outputs = self._box_subnet(C, num_anchors_per_loc, level, istraining = istraining)
-			class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num])
+			class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num + 1])
 			box_outputs = tf.reshape(box_outputs, shape = [batch_size, -1, 4])
 			class_pred.append(class_outputs)
 			box_pred.append(box_outputs)
@@ -51,15 +51,15 @@ class RetinaNet:
 			x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
 			C5 = x = self._identity_block(x, [512, 512, 2048], istraining = istraining)
 
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same", istraining = istraining)
+			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
 			C6 = x = tf.layers.batch_normalization(x, training = istraining)
 
-			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same", istraining = istraining)
+			x = tf.layers.conv2d(x, filters = 256, kernel_size = 3, strides = 2, padding = "same")
 			C7 = x = tf.layers.batch_normalization(x, training = istraining)
 
-			l3 = tf.layers.conv2d(C3, filters = 256, kernel_size = 1, strides = 1, padding = "same", istraining = istraining)
-			l4 = tf.layers.conv2d(C4, filters = 256, kernel_size = 1, strides = 1, padding = "same", istraining = istraining)
-			C5 = tf.layers.conv2d(C5, filters = 256, kernel_size = 1, strides = 1, padding = "same", istraining = istraining)
+			l3 = tf.layers.conv2d(C3, filters = 256, kernel_size = 1, strides = 1, padding = "same")
+			l4 = tf.layers.conv2d(C4, filters = 256, kernel_size = 1, strides = 1, padding = "same")
+			C5 = tf.layers.conv2d(C5, filters = 256, kernel_size = 1, strides = 1, padding = "same")
 
 			shape = tf.shape(l4)
 			x = l4 + tf.image.resize_nearest_neighbor(C5, (shape[1], shape[2]))
@@ -129,7 +129,7 @@ class RetinaNet:
 			return output
 
 	def loss(self, class_pred, box_pred, class_label, box_label, pos_indices, bg_indices):
-		reg_loss = reg_loss(box_pred, box_label, pos_indices)
+		reg_loss = huber_loss(box_pred, box_label, pos_indices)
 		cls_loss = focal_loss(class_pred, class_label, pos_indices | bg_indices)
 
 		normalizer = tf.maximum(tf.reduce_sum(tf.to_float(pos_indices)), 1.0)
@@ -138,10 +138,10 @@ class RetinaNet:
 		return normalized_cls_loss, normalized_reg_loss
 
 	def train(self):
-		box_tensor = tf.placeholder(tf.float32, (None, None, 4))
-		class_tensor = tf.placeholder(tf.float32, (None, None, self.class_num + 1))
-		pos_indices_tensor = tf.placeholder(tf.float32, (None, None, 1))
-		bg_indices_tensor = tf.placeholder(tf.float32, (None, None, 1))
+		box_label = tf.placeholder(tf.float32, (None, None, 4))
+		class_label = tf.placeholder(tf.float32, (None, None, self.class_num + 1))
+		pos_indices = tf.placeholder(tf.bool, (None, None, 1))
+		bg_indices = tf.placeholder(tf.bool, (None, None, 1))
 
 		boxUtil = BBoxUtility((256, 256), self.class_num)
 
@@ -155,11 +155,21 @@ class RetinaNet:
 		with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
 			optim = optimizer.minimize(loss, global_step = self.global_step)
 
-		dl = DataLoader(boxUtil)
+		dataloader = DataLoader(boxUtil)
 
 		c = tf.ConfigProto()
 		c.gpu_options.allow_growth = True
 		with tf.Session() as sess:
 			print("start session")
 			sess.run(tf.global_variables_initializer())
-			
+
+			while dataloader.epoch<10:
+				imgs, bl, cl, pi, bi = dataloader.next_batch(20)
+				feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
+				
+				_, l, step = sess.run([optim, loss, self.global_step], feed_dict = feed_dict)
+				print(l, step)
+
+if __name__ == "__main__":
+	net = RetinaNet()
+	net.train()
