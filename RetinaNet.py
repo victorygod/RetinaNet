@@ -1,8 +1,9 @@
 import tensorflow as tf
 import numpy as np
 from coco_data import DataLoader
-from bbox_util import BBoxUtility
+from bbox_util import BBoxUtility, anchors_to_boxes
 from loss import focal_loss, huber_loss
+import visualize
 
 activation = tf.nn.relu
 
@@ -137,6 +138,37 @@ class RetinaNet:
 		normalized_cls_loss = tf.multiply(cls_loss, 1.0/normalizer)
 		return normalized_cls_loss, normalized_reg_loss
 
+	def decode_box_per_image(self, box_pred, cls_pred, boxUtil, max_selection_size, iou_thresh, score_thresh):
+		cls_pred = tf.sigmoid(cls_pred)
+		box_pred = box_pred + boxUtil.anchors.anchors
+		boxes = tf.stack(anchors_to_boxes(box_pred), axis = 1)
+		scores = cls_pred[..., :-1]
+
+		detection_boxes = []
+		# detection_cls = []
+		detection_scores = []
+		for i in range(self.class_num):
+			indices = tf.image.non_max_suppression(boxes, scores[..., i], max_selection_size, iou_threshold=iou_thresh, score_threshold=score_thresh)
+			detection_box = tf.gather(boxes, indices)
+			padding = tf.maximum(max_selection_size - tf.shape(detection_box)[0], 0)
+			detection_box = tf.pad(detection_box, [(0, padding), (0, 0)])
+			detection_score = tf.gather(scores[..., i], indices)
+			detection_score = tf.expand_dims(detection_score, -1)
+			detection_score = tf.pad(detection_score, [(0, padding), (0, 0)])
+			detection_score = tf.squeeze(detection_score)
+			detection_boxes.append(detection_box)
+			detection_scores.append(detection_score)
+
+		detection_boxes = tf.concat(detection_boxes, axis = 0)
+		# detection_cls = tf.concat(detection_cls, axis = 0)
+		detection_scores = tf.concat(detection_scores, axis = 0)
+		return detection_boxes, detection_scores
+		
+	def decode_box(self, box_pred, cls_pred, boxUtil, max_selection_size = 10, iou_thresh = 0.5, score_thresh = 0.4):
+		detection_boxes, detection_scores = tf.map_fn(lambda x: self.decode_box_per_image(x[0], x[1], boxUtil, max_selection_size, iou_thresh, score_thresh), 
+			(box_pred, cls_pred))
+		return detection_boxes, detection_scores
+
 	def train(self):
 		box_label = tf.placeholder(tf.float32, (None, None, 4))
 		class_label = tf.placeholder(tf.float32, (None, None, self.class_num + 1))
@@ -147,6 +179,8 @@ class RetinaNet:
 
 		box_pred, class_pred = self.build(num_anchors_per_loc = boxUtil.num_anchors_per_loc)
 		box_pred_val, class_pred_val = self.build(istraining = False, num_anchors_per_loc = boxUtil.num_anchors_per_loc)
+		# class_pred_val_output = tf.sigmoid(class_pred_val)
+		class_pred_output = self.decode_box(box_pred, class_pred, boxUtil)
 
 		loss = self.loss(class_pred, box_pred, class_label, box_label, pos_indices, bg_indices)
 		loss = tf.reduce_sum(loss)
@@ -165,33 +199,46 @@ class RetinaNet:
 		saver = tf.train.Saver(tf.global_variables(), max_to_keep = 1)
 		restore_path = "ckpt/"
 
+		# label_output = self.decode_box(box_label, class_label, boxUtil)
+
 		c = tf.ConfigProto()
 		c.gpu_options.allow_growth = True
 		with tf.Session() as sess:
 			print("start session")
 			sess.run(tf.global_variables_initializer())
 
+			# imgs, bl, cl, pi, bi = dataloader.next_batch(20)
+			# label_o = sess.run(label_output, feed_dict = {box_label: bl, class_label: cl*2000-1000})
+			# ind = 0
+			# visualize.visualize(imgs[ind], label_o[0][ind], label_o[1][ind])
+
 			checkpoint = tf.train.latest_checkpoint(restore_path)
 			if checkpoint:
 				print("restore from: " + checkpoint)
 				saver.restore(sess, checkpoint)
 
-			while dataloader.epoch<10:
+			while True:#dataloader.epoch<10:
 				imgs, bl, cl, pi, bi = dataloader.next_batch(20)
 				feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
 
-				_, l, step = sess.run([optim, loss, self.global_step], feed_dict = feed_dict)
-				print(l, step)
+				_, l, step, cls_output = sess.run([optim, loss, self.global_step, class_pred_output], feed_dict = feed_dict)
+				print(l, step, cls_output[0].shape, np.max(cls_output[1]))
+				visualize.visualize(imgs[0], cls_output[0][0], cls_output[1][0])
 
 				if step % 100 == 0:
-					ll = 0
-					for i in range(10):
-						imgs, bl, cl, pi, bi = dataloader_val.next_batch(20)
-						feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
-						l = sess.run(loss, feed_dict = feed_dict)
-						ll+=l
-					print("validataion loss:", ll/10, step)
+					# ll = 0
+					# for i in range(10):
+					# 	imgs, bl, cl, pi, bi = dataloader_val.next_batch(20)
+					# 	feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
+					# 	l, box_output, cls_output = sess.run([loss, box_pred_val, class_pred_val], feed_dict = feed_dict)
+					# 	ll+=l
+					# 	# print(np.min(cls_output[:, :, -1]))
+
+					# print("validataion loss:", ll/10, step)
 					saver.save(sess, restore_path+"ckpt")
+
+	
+
 
 if __name__ == "__main__":
 	net = RetinaNet()
