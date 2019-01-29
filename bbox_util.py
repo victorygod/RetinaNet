@@ -18,7 +18,7 @@ class Anchor:
 		self.anchor_squares = (rbx - ltx)*(rby - lty)
 
 class BBoxUtility:
-	def __init__(self, image_shape, class_num = 80, anchor_cfg = {"scales": [2, 3, 4], "ratios": [0.5, 1, 2]}):
+	def __init__(self, image_shape, class_num = 80, anchor_cfg = {"scales": [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], "ratios": [0.5, 1, 2]}):
 		self.image_shape = image_shape
 		self.class_num = class_num
 		self.num_anchors_per_loc = len(anchor_cfg["scales"])*len(anchor_cfg["ratios"])
@@ -32,22 +32,25 @@ class BBoxUtility:
 		self.anchors = Anchor(anchors)
 		print("anchors generated.")
 
-	def generate_anchors(self, width, height, level, scales = [2, 3, 4], ratios = [0.5, 1, 2]):
+	def generate_anchors(self, width, height, level, scales, ratios):
+		ori_w, ori_h = width, height
+		base_size = 4
 		for l in range(level):
 			width = (width + 1) //2
 			height = (height + 1) //2
+			base_size *= 2
 
-		x = (np.arange(width) + 0.5) / width
-		y = (np.arange(height) + 0.5) / height
-		s = np.array(scales)
+		x = (np.arange(width) + 0.5) / width * ori_w
+		y = (np.arange(height) + 0.5) / height * ori_h
+		s = np.array(scales) * base_size
 		r = np.array(ratios)
 		x, y, s, r = np.meshgrid(x, y, s, r)
 		x = x.transpose([1, 0, 2, 3]).reshape([-1])
 		y = y.transpose([1, 0, 2, 3]).reshape([-1])
 		s = s.transpose([1, 0, 2, 3]).reshape([-1])
 		r = r.transpose([1, 0, 2, 3]).reshape([-1])
-		h = s * np.sqrt(r) / height
-		w = s / np.sqrt(r) / width
+		h = s * np.sqrt(r)
+		w = s / np.sqrt(r)
 		anchors = np.stack([x, y, w, h], axis = -1).reshape([-1, 4])
 		return anchors
 
@@ -80,33 +83,32 @@ class BBoxUtility:
 		pos_indices = ious >= positive_threshold
 		bg_indices = ious < negative_threshold
 		box_label = np.zeros_like(self.anchors.anchors)
-		class_label = np.zeros([self.anchors.anchors.shape[0], self.class_num+1])
+		class_label = np.zeros([self.anchors.anchors.shape[0], self.class_num])
 		for i in range(gt.shape[0]):
 			class_label[pos_indices[i, :], gtcls[i]] = 1
 			box_label[pos_indices[i, :]] = gt[i, :] - self.anchors.anchors[pos_indices[i, :]]
 
 		pos_indices = np.sum(pos_indices, axis = 0) > 0
 		bg_indices = np.sum(~bg_indices, axis = 0) == 0
-		class_label[bg_indices, -1] = 1
 		return box_label, class_label, pos_indices, bg_indices
 
 if __name__ == "__main__":
 	boxUtil = BBoxUtility((256, 256))
-	# gt = np.array([[0.28888666577,0.5, 0.181,0.1748484848484844], [0.35555555,0.255555555,0.5,0.32222222222222222222222], [0.2,0.5, 0.1,0.3], [0.2,0.2,0.5,0.3], [0.2,0.5, 0.1,0.3], [0.2,0.2,0.5,0.3]])
-	# gtcls = np.array([2, 0, 2, 0, 2, 0]).astype(int)
-	# aa, bb, cc, dd = boxUtil.gtbox_assign(gt, gtcls)
-	# print(aa.shape)
-	# print(np.unique(aa, axis = 0))
-	# print(np.unique(cc))
-	# print(dd)
+	gt = np.array([[25, 48, 90, 100]])
+	gtcls = np.array([2, 0, 2, 0, 2, 0]).astype(int)
+	aa, bb, cc, dd = boxUtil.gtbox_assign(gt, gtcls)
+	print(aa.shape)
+	print(np.unique(aa, axis = 0))
+	print(np.unique(cc))
+	print(dd)
 
-	anchors = boxUtil.generate_anchors(256, 256, 4, scales = [2, 3, 4])
-	print(anchors)
-	gt = np.array([[0.28888666577,0.5, 0.181,0.1748484848484844]])
-	gtcls = [2]
-	ious = boxUtil.calc_iou(gt, Anchor(anchors))
-	print(np.max(ious))
-	print(anchors[np.argmax(ious)])	
+	# anchors = boxUtil.generate_anchors(256, 256, 4, scales = [2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)], ratios = [0.5, 1, 2])
+	# print(anchors)
+	# gt = np.array([[25, 48, 90, 100]])
+	# gtcls = [2]
+	# ious = boxUtil.calc_iou(gt, Anchor(anchors))
+	# print(np.max(ious))
+	# print(anchors[np.argmax(ious)])	
 
 	# def calc_iou(self, gt, anchors):
 	# 	def anchors_to_boxes(anchors):

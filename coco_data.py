@@ -19,7 +19,7 @@ class DataLoader:
 		filePath = "../COCO/annotations/instances_" + mode + "2014.json"
 		self.coco = COCO(filePath)
 		imgIds = self.coco.getImgIds()
-		self.imgs_info = self.coco.loadImgs(imgIds)[:10]
+		self.imgs_info = self.coco.loadImgs(imgIds)
 		np.random.shuffle(self.imgs_info)
 		self.img_dir = "../COCO/" + mode + "2014/"
 		self.cursor = 0
@@ -62,7 +62,7 @@ class DataLoader:
 				y, x, h, w = ann["bbox"]
 				x+=w/2
 				y+=h/2
-				bbox.append([x/ori_img_shape[0], y/ori_img_shape[1], w/ori_img_shape[0], h/ori_img_shape[1]])
+				bbox.append([x/ori_img_shape[0]*self.img_size[0], y/ori_img_shape[1]*self.img_size[1], w/ori_img_shape[0]*self.img_size[0], h/ori_img_shape[1]*self.img_size[1]])
 
 			box_label, class_label, pos_index, bg_index = self.bboxUtil.gtbox_assign(np.array(bbox), np.array(bbid).astype(int))
 			

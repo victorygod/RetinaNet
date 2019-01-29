@@ -22,7 +22,7 @@ class RetinaNet:
 			for level, C in enumerate(features):
 				class_outputs = self._class_subnet(C, num_anchors_per_loc, level, istraining = istraining)
 				box_outputs = self._box_subnet(C, num_anchors_per_loc, level, istraining = istraining)
-				class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num + 1])
+				class_outputs = tf.reshape(class_outputs, shape = [batch_size, -1, self.class_num])
 				box_outputs = tf.reshape(box_outputs, shape = [batch_size, -1, 4])
 				class_pred.append(class_outputs)
 				box_pred.append(box_outputs)
@@ -116,7 +116,7 @@ class RetinaNet:
 				x = tf.layers.batch_normalization(x, training = istraining, name = "class_{}_bn_levle_{}".format(i, level))
 				x = activation(x)
 
-			output = tf.layers.conv2d(x, filters = (self.class_num+1)*num_anchors_per_loc, kernel_size = 3, padding = "same", name = "class_output")
+			output = tf.layers.conv2d(x, filters = self.class_num*num_anchors_per_loc, kernel_size = 3, padding = "same", name = "class_output")
 			return output
 
 	def _box_subnet(self, x, num_anchors_per_loc, level, istraining = True):
@@ -139,11 +139,10 @@ class RetinaNet:
 		return normalized_cls_loss, normalized_reg_loss
 
 	def decode_box_per_image(self, box_pred, cls_pred, boxUtil, max_selection_size, iou_thresh, score_thresh):
-		cls_pred = tf.sigmoid(cls_pred)
+		scores = tf.sigmoid(cls_pred)
 		box_pred = box_pred + boxUtil.anchors.anchors
 		boxes = tf.stack(anchors_to_boxes(box_pred), axis = 1)
-		scores = cls_pred[..., :-1]
-
+		
 		detection_boxes = []
 		# detection_cls = []
 		detection_scores = []
@@ -164,14 +163,14 @@ class RetinaNet:
 		detection_scores = tf.concat(detection_scores, axis = 0)
 		return detection_boxes, detection_scores
 		
-	def decode_box(self, box_pred, cls_pred, boxUtil, max_selection_size = 10, iou_thresh = 0.5, score_thresh = 0.4):
+	def decode_box(self, box_pred, cls_pred, boxUtil, max_selection_size = 10, iou_thresh = 0.5, score_thresh = 0.3):
 		detection_boxes, detection_scores = tf.map_fn(lambda x: self.decode_box_per_image(x[0], x[1], boxUtil, max_selection_size, iou_thresh, score_thresh), 
 			(box_pred, cls_pred))
 		return detection_boxes, detection_scores
 
 	def train(self):
 		box_label = tf.placeholder(tf.float32, (None, None, 4))
-		class_label = tf.placeholder(tf.float32, (None, None, self.class_num + 1))
+		class_label = tf.placeholder(tf.float32, (None, None, self.class_num))
 		pos_indices = tf.placeholder(tf.bool, (None, None, 1))
 		bg_indices = tf.placeholder(tf.bool, (None, None, 1))
 
@@ -226,15 +225,15 @@ class RetinaNet:
 				visualize.visualize(imgs[0], cls_output[0][0], cls_output[1][0])
 
 				if step % 100 == 0:
-					# ll = 0
-					# for i in range(10):
-					# 	imgs, bl, cl, pi, bi = dataloader_val.next_batch(20)
-					# 	feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
-					# 	l, box_output, cls_output = sess.run([loss, box_pred_val, class_pred_val], feed_dict = feed_dict)
-					# 	ll+=l
-					# 	# print(np.min(cls_output[:, :, -1]))
+					ll = 0
+					for i in range(10):
+						imgs, bl, cl, pi, bi = dataloader_val.next_batch(20)
+						feed_dict = {self.input_tensor: imgs, box_label: bl, class_label: cl, pos_indices: pi, bg_indices: bi}
+						l, box_output, cls_output = sess.run([loss, box_pred_val, class_pred_val], feed_dict = feed_dict)
+						ll+=l
+						# print(np.min(cls_output[:, :, -1]))
 
-					# print("validataion loss:", ll/10, step)
+					print("validataion loss:", ll/10, step)
 					saver.save(sess, restore_path+"ckpt")
 
 	
